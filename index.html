@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+	<meta charset="UTF-8"/>
+	<title>Image To SVG Converter</title>
+	<meta name="viewport" content="width=device-width" initial-scale="2.0">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="mobile-mobile-web-app-capable" content="yes">
+	<link rel="apple-touch-icon" sizes="144x144" href="https://phychi.com/img/apple-touch-icon.png">
+	<link rel="icon" type="image/png" href="https://phychi.com/img/fav128.png" sizes="128x128">
+	<link rel="icon" type="image/png" href="https://phychi.com/img/fav64.png" sizes="64x64">
+	<link rel="icon" type="image/png" href="https://phychi.com/img/fav32.png" sizes="32x32">
+	<link rel="icon" type="image/png" href="https://phychi.com/img/fav16.png" sizes="16x16">
+	<meta name="theme-color" content="#e3e3e3"><!-- toolbar color is changeable :3 -->
+	<meta name="author" content="Antonio Noack"/>
+	<meta name="description" content="This project converts any PNG, JPG or WEBP file into an SVG file directly in your browser. No download necessary, and free of charge.">
+	<style>
+		input[type="file"] {
+			display: none;
+		}
+		.custom-file-upload {
+			display: inline-block;
+			margin: 1em;
+			cursor: pointer;
+		}
+		* {
+			font-family: Verdana,Arial,Sans;
+		}
+		b {
+			color: #873e00;
+		}
+		body {
+			width: 640px;
+			margin: auto;
+			background-image: url(bg.jpg);
+			background-repeat: repeat;
+		}
+		h1 {
+			color: #7a6862;
+			padding: 1.5em;
+			text-align: center;
+		}
+		h2 {
+			color: #7a6862;
+			text-align: center;
+		}
+		.brick {
+			background: white;
+			padding: 1em;
+			border-radius: 0.5em;
+			box-shadow: 1px 2px 2px 0px #888;
+		}
+		.brick2 {
+			background: white;
+			padding: 1em;
+			border-radius: 0.5em;
+			box-shadow: 1px 2px 2px 0px #888;
+			width: 10em;
+			text-align: center;
+		}
+		p {
+			text-align: center;
+		}
+		.centering {
+		}
+		#canvas {
+			display: none;
+		}
+		footer {
+			text-align: center;
+		}
+		a {
+			color: #623a1d;
+			text-decoration: none;
+		}
+		.ri {
+			max-width: 10em;
+			height: 7em;
+		}
+		.select-box {
+			padding: 0.3em;
+			border-radius: 0.2em;
+			box-shadow: 1px 2px 2px 0px #888;
+			cursor: pointer;
+			width: 1.3em;
+			height: 1.3em;
+		}
+		.brick3 {
+			background: white;
+			padding: 1em;
+			border-radius: 0.5em;
+			box-shadow: 1px 2px 2px 0px #888;
+			text-align: center;
+		}
+	</style>
+</head><body>
+	<!--
+		done: input field, where you can drop your image
+		done: output field with the result
+		done: color sensitivity slider / input field
+		done: implement algorithm in JavaScript
+		done: option to remove thin lines
+		done: option to make background transparent no matter what
+		
+		todo there's some dirt... where is that coming from???
+	-->
+	<br>
+	<h1 class="brick">Convert Image To SVG</h1>
+	<p class="brick">This tool segments your image into chunks of the same color, and then writes these shapes into a <b>SVG</b> file for you to use anywhere. The types of images you can upload depends on your browser, but every browser should support the basics like <b>PNG</b>, <b>JPEG</b> and <b>WEBP</b>.</p>
+	<div class="centering" style="display: flex; justify-content: center">
+		<label class="custom-file-upload brick2" for="file-upload">
+			<img class="ri" src="upload.svg" width="660" height="532" alt="Upload Button"></img>
+			<b>Image Upload</b>
+		</label>
+		<label id="result-box" class="custom-file-upload brick2" style="display: none">
+			<img class="ri" id="result-img"></img>
+			<b>Download</b>
+		</label>
+	</div>
+	<div id="progressBarParent" style="display: none">
+		<div class="brick">
+			<div id="progressBar" style="width: 68%; border-radius: 5px; height: 1em;"></div>
+		</div>
+		<br>
+	</div>
+	<input id="file-upload" type="file"/>
+	<div class="brick3" style="margin: auto;">
+		<h2 style="margin: 0.2em 0.2em 0.7em 0.2em;">Settings</h2>
+		<label style="font-size: 1.3em;" for="thinLines">Thin Lines</label>
+		<input class="select-box" id="thinLines" type="checkbox"></input><br>
+		<label style="font-size: 1.3em;" for="allowedError">Allowed Color Error</label>
+		<input id="allowedError" type="range"></input><br>
+		<label style="font-size: 1.3em;" for="removeBG">Remove Background</label>
+		<input class="select-box" id="removeBG" type="checkbox"></input>
+	</div>
+	<p class="brick">SVG files have the advantage over PNG and JPEG of being fully scale-independent, and may have smaller file sizes for icon-like images. They can also be cropped relatively easy by adjusting the viewbox-parameter at the start of every SVG file. SVG files are human-readable, and theoretically human-editable, but you might want to consider a proper editing program like Inkscape.</p>
+	<h2 class="brick">Privacy Policy</h2>
+	<p class="brick">You cannot enter personal data, so we won't process or store it.<br><br>
+	Furthermore, your images aren't uploaded to our servers, and instead directly processed on your device. This makes this page completely secure for use with confidential images.</p>
+	<footer class="brick"><a href="https://phychi.com/impressum/">&copy;2024 Antonio Noack</a></footer><br>
+	<canvas id="canvas"></canvas>
+	<script>
+		let ds = [[-1,0],[+1,0],[0,-1],[0,+1]]
+		const TAU = Math.PI * 2
+		function distSq4(a,b) {
+			let dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2], dw = a[3]-b[3]
+			return dx*dx + dy*dy + dz*dz + dw*dw
+		}
+		function lerp(a,b,f) {
+			for (let i=0;i<4;i++){
+				a[i] += (b[i]-a[i]) * f
+			}
+		}
+		
+		function updateProgressBar(progress) {
+			if (progress == 0.0) progressBarParent.style.display = ''
+			if (progress > 1.0) progressBarParent.style.display = 'none'
+			progressBar.style.width = (progress*100)+'%'
+			progressBar.style.background = 'hsl(33,100%,79%)'
+		}
+		
+		let processingIndex = 0
+		function segmentation(w,h,pixels,callback){
+			const size = w*h
+			let maxColorDiffRaw = allowedError.value / 100
+			let maxColorDiffSq = Math.max(Math.pow(maxColorDiffRaw,3) * Math.pow(150,2),1)
+			let dst = new Uint32Array(size)
+			let colors = new Array(size)
+			let weights = new Float32Array(size)
+			for (let i=0;i<size;i++) dst[i] = i
+			weights.fill(1)
+			for (let i=0;i<size;i++) {
+				let i4 = i*4
+				colors[i] = [pixels[i4],pixels[i4+1],pixels[i4+2],pixels[i4+3]]
+			}
+			let minXs = new Uint32Array(size)
+			let maxXs = new Uint32Array(size)
+			let minYs = new Uint32Array(size)
+			let maxYs = new Uint32Array(size)
+			for (let y=0,i=0;y<h;y++){
+				for (let x=0;x<w;x++,i++){
+					maxXs[i] = minXs[i] = x
+					maxYs[i] = minYs[i] = y
+				}
+			}
+			let total = size * 4
+			let ctr = 0
+			for (let di=0;di<ds.length;di++){
+				let d = ds[di]
+				d[2] = d[0]+d[1]*w
+			}
+			function process(x,y,j,stage) {
+				if ((++ctr & 1023) == 0) {
+					updateProgressBar(ctr/total)
+				}
+				
+				let ci = dst[j]
+				let colorI = colors[ci]
+				for (let di=0;di<ds.length;di++){
+					let d = ds[di]
+					let j1 = j+d[2]
+					let cj = dst[j1]
+					
+					function remap(x,y,d) {
+						if (x >= 0 && x < w && y >= 0 && y < h) {
+							let i = x+y*w
+							if(dst[i] == cj) {
+								dst[i] = ci
+								minXs[ci] = Math.min(minXs[ci], x)
+								minYs[ci] = Math.min(minYs[ci], y)
+								maxXs[ci] = Math.max(maxXs[ci], x)
+								maxYs[ci] = Math.max(maxYs[ci], y)
+								if (d < 500) {
+									let di = d + 1
+									return 1+remap(x-1,y,di)+remap(x+1,y,di)+remap(x,y-1,di)+remap(x,y+1,di)
+								} else return 1
+							} else return 1
+						} else return 0
+					}
+					
+					let colorJ = colors[cj]
+					let accepted = stage ? maxColorDiffSq * 10 : maxColorDiffSq
+					let maxWeight = stage ? 3 : 1e9
+					if(ci != cj && distSq4(colorJ, colorI) < accepted && weights[ci] + 16 >= weights[cj]) {
+						let w0 = weights[ci]
+						let w1 = weights[cj]
+						if (w1 <= maxWeight){
+							let wx = remap(x+d[0],y+d[1],0)
+							let t = wx / (w0+w1)
+							lerp(colorI,colorJ,t)
+							weights[ci] = w0 + wx
+							weights[cj] = w1 - wx
+						}
+					}
+				}
+			}
+			function printState(){
+				let count = 0
+				for (let i=0;i<size;i++){
+					if (weights[i]>0) count++
+				}
+				console.log('Non-zero values:', count, '/', size)
+			}
+			
+			updateProgressBar(0)
+			let progress = [0,1] // k,y
+			let thisProcessingIndex = ++processingIndex
+			function worker(){
+				if (thisProcessingIndex != processingIndex) return
+				// work on the solution
+				let t0 = Date.now(), isDone = false
+				while(!isDone){
+					// work on a row
+					let k = progress[0]
+					let y = progress[1]++
+					
+					for (let x=1,j=x+y*w;x<w-1;x++,j++) {
+						process(x,y,j,k < 3 ? 0 : 1)
+					}
+					
+					if(y >= h-2) {
+						progress[0]++
+						progress[1] = 1
+						isDone = progress[0] >= 4
+					}
+					let t1 = Date.now()
+					if (t1-t0 > 16) break // budget used
+				}
+				if (!isDone) {
+					setTimeout(worker, 1)
+				} else {
+					let result = { w, h, dst, colors, weights, minXs, minYs, maxXs, maxYs }
+					callback(result)
+				}
+			}
+			setTimeout(worker, 1)
+		}
+		function sortSegments(weights, colors) {
+			let dst = new Array(weights.length), len = 0
+			for (let i=0;i<weights.length;i++){
+				let wi = weights[i]
+				if (wi >= 3) {
+					// prefer transparent regions
+					dst[len++] = [i,wi * (270 - colors[i][3])]
+				}
+			}
+			dst = dst.slice(0,len)
+			dst.sort((a,b) => b[1]-a[1])
+			return dst
+		}
+		function toHex(c) {
+			c = (c|0).toString(16)
+			return c.length == 1 ? '0' + c : c
+		}
+		function toHexColor(c) {
+			return c[3] == 255 ?
+				'#'+toHex(c[0])+toHex(c[1])+toHex(c[2]) :
+				'#'+toHex(c[0])+toHex(c[1])+toHex(c[2])+toHex(c[3])
+		}
+		let maxErr = 1.5
+		function dot(a,b) {
+			return a[0]*b[0] + a[1]*b[1]
+		}
+		function add(a,b) {
+			return [a[0]+b[0],a[1]+b[1]]
+		}
+		function sub(a,b) {
+			return [a[0]-b[0],a[1]-b[1]]
+		}
+		function distSq2(a,b) {
+			let dx = a[0]-b[0], dy = a[1]-b[1]
+			return dx*dx + dy*dy
+		}
+		function dist(a,b) {
+			return Math.sqrt(distSq2(a,b))
+		}
+		function mix(a,b,f) {
+			let px = a[0]+f*(b[0]-a[0]), py = a[1]+f*(b[1]-a[1])
+			return [px,py]
+		}
+		function isValid2i(v,a,b){
+			let h = dot(sub(v,a),sub(b,a)) / distSq2(a,b)
+			let px = a[0]+h*(b[0]-a[0])-v[0], py = a[1]+h*(b[1]-a[1])-v[1]
+			return px*px + py*py < maxErr*maxErr
+		}
+		function isValid2(line,lin){
+			let a = lin[0], b = lin[1]
+			return line.every(v => isValid2i(v,a,b))
+		}
+		function solveLinear(b,c) {
+			if (b == 0 || Math.abs(c) > 1e9 * Math.abs(b)) {
+				return []
+			}
+			return [-c/b]
+		}
+		function solveQuadratic(a,b,c){
+			if (a == 0 || Math.abs(b)+Math.abs(c) > 1e9 * Math.abs(a)) {
+				return solveLinear(b,c)
+			}
+			let div = b*b-4*a*c
+			if (div > 0) {
+				div = Math.sqrt(div)
+				return [
+					(-b+div) / (2*a),
+					(-b-duv) / (2*a)
+				]
+			} else if (div == 0){
+				return [-b/(2*a)]
+			} else {
+				return []
+			}
+		}
+		function solveCubicNormed(a0,b,c) {
+			let a = a0
+			let a2 = a*a
+			let q = (a2-3*b)/9
+			let r = (a*(2*a2-9*b)+27*c)/54
+			let r2 = r*r
+			let q3 = q*q*q
+			if (r2 < q3) {
+				let t = r / Math.sqrt(q3)
+				if (t<-1) t = -1
+				if (t>+1) t = +1
+				t = Math.acos(t)
+				a /= 3
+				q = -2*Math.sqrt(q)
+				return [
+					q*Math.cos(t/3)-a,
+					q*Math.cos((t+TAU)/3)-a,
+					q*Math.cos((t-TAU)/3)-a
+				]
+			} else {
+				let a3 = -Math.cbrt(Math.abs(r) + Math.sqrt(r2-q3))
+				if (r < 0) a3 = -a3
+				let b3 = a3 == 0 ? 0 : q / a3
+				a /= 3
+				let dst0 = a3+b3-a
+				let dst1 = -0.5 * (a3+b3) - a
+				let cond = +0.5 * Math.sqrt(3) * (a3-b3)
+				return Math.abs(cond) < 1e-14 ? [dst0, dst1] : [dst0]
+			}
+		}
+		function solveCubic(a,b,c,d){
+			if (a) {
+				let bn = b/a, cn = c/a, dn = d/a
+				if (Math.abs(bn) < 1e9 && Math.abs(cn) < 1e9 && Math.abs(dn) < 1e9) {
+					return solveCubicNormed(bn,cn,dn)
+				}
+			}
+			return solveQuadratic(b,c,d)
+		}
+		function interpolate3(p0,p1,p2,t){
+			return mix(mix(p0,p1,t),mix(p1,p2,t),t)
+		}
+		function isValid3i(v,p0,p1,p2){
+			let minDist = Math.min(dist(v,p0), dist(v,p2))
+			if (minDist < maxErr) return true;
+			let qa = sub(p0,v), ab = sub(p1,p0), br = sub(sub(p2,p1),ab)
+			let a = dot(br,br)
+			let b = 3*dot(ab,br)
+			let c = 2*dot(ab,ab) + dot(qa,br)
+			let d = dot(qa,ab)
+			let sol = solveCubic(a,b,c,d)
+			for (let i=0;i<sol.length;i++){
+				let si = sol[i]
+				if (si > 0 && si < 1) {
+					let distI = dist(interpolate3(p0,p1,p2,si),v)
+					if (distI < maxErr) return true;
+				}
+			}
+			return false;
+		}
+		function isValid3(line,qua){
+			let a = qua[0], b = qua[1], c = qua[2]
+			return line.every(v => isValid3i(v,a,b,c))
+		}
+		function extractSegment(seg,ci){
+			let src = seg.dst, w = seg.w
+			let x0 = seg.minXs[ci], x1 = seg.maxXs[ci]
+			let y0 = seg.minYs[ci], y1 = seg.maxYs[ci]
+			let line = [], startX = x0, startY = y0
+			for (;startX<=x1;startX++){
+				if (src[startX+startY*w] == ci) {
+					break // found the start pixel :)
+				}
+			}
+			line.push([startX-0.5, startY-0.5])
+			line.push([startX+0.5, startY-0.5])
+			while (true) {
+				function isSame(x,y) {
+					let xi = Math.round(x)
+					let yi = Math.round(y)
+					return xi >= x0 && xi <= x1 &&
+						yi >= y0 && yi <= y1 &&
+						src[xi+yi*w] == ci
+				}
+				// find next point: straight / left turn / right turn
+				let p0 = line[line.length-2]
+				let p1 = line[line.length-1]
+				let n = mix(p0,p1,1.5)
+				let c = [p1[1]-p0[1], p0[0]-p1[0]]
+				let a = isSame(n[0]+c[0]/2, n[1]+c[1]/2)
+				let b = isSame(n[0]-c[0]/2, n[1]-c[1]/2)
+				if (a && b) {
+					// left
+					line.push(add(p1,c))
+				} else if(!a && b) {
+					// straight
+					line.push(mix(p0,p1,2))
+				} else {
+					// right
+					line.push(sub(p1,c))
+				}
+				if (distSq2(line[line.length-1], line[0]) < 0.5) {
+					line.pop()
+					for (let i=0;i<line.length;i++){
+						let li = line[i]
+						li[0] += 0.5
+						li[1] += 0.5
+					}
+					return line
+				}
+			}
+		}
+		function subList(list,i0,i1) {
+			let dst = new Array(i1-i0)
+			for (let i=i0;i<i1;i++) {
+				dst[i-i0] = list[i % list.length]
+			}
+			return dst
+		}
+		function getSimplification(line){
+			if (line.length < 2) return null
+			let p0 = line[0], pn = line[line.length-1]
+			let linear = [p0,pn]
+			if (isValid2(line,linear)) {
+				return linear
+			}
+			if (line.length > 3) {
+				let pc = line[line.length>>1]
+				let pq = [
+					2*pc[0] - (p0[0]+pn[0])*0.5,
+					2*pc[1] - (p0[1]+pn[1])*0.5,
+				]
+				let quadratic = [p0,pq,pn]
+				if (isValid3(line,quadratic)) {
+					return quadratic
+				}
+			}
+			return null
+		}
+		function findComplexSegments(line){
+			let dst = new Array(line.length), len = 0, i = 0
+			while (i<line.length){
+				let j=Math.min(i+2,line.length)
+				let best = getSimplification(subList(line,i,j+1))
+				while (j+1<line.length){
+					let maybe = getSimplification(subList(line,i,j+2))
+					if (!maybe) break;
+					best = maybe
+					j++
+				}
+				dst[len++] = best
+				i = j
+			}
+			return dst.slice(0,len)
+		}
+		function cm(x) { // compress number
+			x = x+''
+			if (x.length > 2 && x.indexOf('.0') == x.length-2){
+				x = x.substr(0,x.length-2)
+			}
+			return x
+		}
+		function appendOptimizedPolygon(builder,color,line){
+			builder.push('  <path fill="', color,'" d="')
+			let s0 = line[0]
+			let p0 = s0[0]
+			builder.push('M', cm(p0[0]), ' ', cm(p0[1]))
+			for (let i=0;i<line.length;i++){
+				let segment = line[i]
+				let p0=segment[0],p1=segment[1],p2=segment[2]
+				if (!p2) {
+					// linear
+					if (p0[0] == p1[0]) {
+						builder.push('v', cm(p1[1]-p0[1]))
+					} else if (p0[1] == p1[1]) {
+						builder.push('h', cm(p1[0]-p0[0]))
+					} else {
+						builder.push('l', cm(p1[0]-p0[0]), ' ', cm(p1[1]-p0[1]))
+					}
+				} else {
+					// quadratic
+					builder.push('q',
+						cm(p1[0]-p0[0]), ' ', 
+						cm(p1[1]-p0[1]), ',', 
+						cm(p2[0]-p0[0]), ' ',
+						cm(p2[1]-p0[1]))
+				}
+			}
+			builder.push('z"/>\n')
+		}
+		let resultBox = document.getElementById('result-box')
+		let fileName = ''
+		let ctx = null, w, h
+		thinLines.onchange = () => {
+			if (ctx) processImage()
+		}
+		removeBG.onchange = () => {
+			if (ctx) processImage()
+		}
+		allowedError.onchange = () => {
+			if (ctx) processImage()
+		}
+		function unoptimized(line1){
+			let dst = new Array(line1.length)
+			dst[0] = [line1[line1.length-1], line1[0]]
+			for (let i=1;i<line1.length;i++) {
+				dst[i] = [line1[i-1], line1[i]]
+			}
+			return dst
+		}
+		function processImage(){
+			segmentation(w,h,ctx.getImageData(0, 0, w, h).data,seg => {
+				let segmentBySize = sortSegments(seg.weights, seg.colors)
+				let builder = ["<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ",w," ",h,"\""]
+				if (!removeBG.checked) {
+					let bg = toHexColor(seg.colors[segmentBySize[0][0]])
+					builder.push(" style=\"background-color:", bg, "\"")
+				}
+				builder.push(">\n")
+				let skipThinLines = !thinLines.checked
+				for (let j=1;j<segmentBySize.length;j++){
+					let i = segmentBySize[j][0]
+					let ci = seg.dst[i]
+					if (i != ci) continue // weird bug...
+					let color = seg.colors[ci]
+					if (color[3] < 3) continue // invisible
+					let isThin = seg.maxXs[ci]-seg.minXs[ci] < 2 || seg.maxYs[ci]-seg.minYs[ci] < 2
+					if (skipThinLines && isThin) {
+						// too thin
+						continue
+					}
+					let line1 = extractSegment(seg,ci)
+					let line2 = isThin ? unoptimized(line1) : findComplexSegments(line1)
+					appendOptimizedPolygon(builder,toHexColor(color),line2)
+				}
+				builder.push('</svg>')
+				let dataSVG = builder.join('')
+				let dataUrl = btoa(unescape(encodeURIComponent(dataSVG)))
+				dataUrl = 'data:image/svg+xml;base64,' + dataUrl
+				resultBox.style.display = ''
+				resultBox.onclick = () => {
+					let link = document.createElement('a')
+					link.download = fileName + '.svg'
+					link.href = dataUrl
+					link.click()
+				}
+				document.getElementById('result-img').src = dataUrl
+				updateProgressBar(2)
+			})
+		}
+		function processFile(file){
+			let reader = new FileReader()
+			resultBox.style.display = 'none' // hide it while we're processing
+			reader.onload = function(e) {
+				let img = new Image()
+				img.onload = function() {
+					let canvas = document.getElementById('canvas')
+					ctx = canvas.getContext('2d', { willReadFrequently: true })
+					w = canvas.width = img.width
+					h = canvas.height = img.height
+					ctx.drawImage(img, 0, 0)
+					processImage()
+				}
+				img.src = e.target.result
+			}
+			reader.readAsDataURL(file)
+		}
+		document.getElementById('file-upload').addEventListener('change', function(event) {
+			const file = event.target.files[0]
+			if (!file) return;
+			
+			fileName = file.name
+			let fei = fileName.lastIndexOf('.')
+			if (fei > 0) { // remove file extension
+				fileName = fileName.substr(0, fei)
+			}
+			
+			processFile(file)
+		});
+	</script>
+</body></html>
